@@ -1,80 +1,112 @@
-'''实现功能：
-	•	给定音频路径，提取 mel 特征，生成嵌入。
-	•	比较两个嵌入的余弦相似度，判断是否为同一人。
-	•	或将嵌入输入训练好的分类器输出预测类别
-'''
+import csv
 
 import torch
 import torchaudio
-import torch.nn.functional as F
 import os
+import torch.nn.functional as F
 
-def load_model(model_path, config, device):
-    from speechbrain.lobes.models.ECAPA_TDNN import ECAPA_TDNN
-    model = ECAPA_TDNN(
-        input_size=80,
-        lin_neurons=config["embedding_dim"],
-        channels=config["channels"],
-        kernel_sizes=[5, 3, 3, 1],
-        dilations=[1, 2, 3, 1],
-    ).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.eval()
-    return model
+class VoiceRecognizer:
+    def __init__(self, config_path):
+        self.config = self._load_config(config_path)
+        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-def extract_embedding(audio_path, model, config, device):
-    waveform, sr = torchaudio.load(audio_path)
-    if sr != config["sample_rate"]:
-        waveform = torchaudio.functional.resample(waveform, sr, config["sample_rate"])
-    # If stereo, convert to mono by averaging channels
-    if waveform.dim() > 1 and waveform.size(0) > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-    waveform = waveform.squeeze(0)
+    def enroll_user(self, username: str, audio_path: str, model_path: str):
+        try:
+            model = self._load_model(model_path)
+        except Exception:
+            return f"用户模型识别失败，请重新选择模型文件"
+        try:
+            embedding = self._extract_embedding(audio_path, model)
+            embedding_np = embedding.squeeze(0).squeeze(0).numpy()
+            embedding_str = ','.join(map(str, embedding_np.tolist()))
+            file_exists = os.path.isfile('voice_users.csv')
+            with open('voice_users.csv', mode='a', newline='') as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(['username', 'embedding'])
+                writer.writerow([username, embedding_str])
+            return f"用户 {username} 已成功录制声纹"
+        except Exception:
+            return f"用户模型识别失败，请重新选择模型文件"
 
-    max_len = config["sample_rate"] * 10
-    if waveform.size(0) > max_len:
-        waveform = waveform[:max_len]
-    else:
-        waveform = torch.nn.functional.pad(waveform, (0, max_len - waveform.size(0)))
+    def verify_user(self, username: str, audio_path: str, model_path: str):
+        try:
+            model = self._load_model(model_path)
+            embedding = self._extract_embedding(audio_path, model).squeeze(0).squeeze(0)
+        except Exception:
+            return None, "用户模型识别失败，请重新选择模型文件"
 
-    mel = torchaudio.transforms.MelSpectrogram(
-        sample_rate=config["sample_rate"],
-        n_fft=400,
-        win_length=400,
-        hop_length=160,
-        n_mels=80
-    )(waveform).transpose(0, 1)
+        if not os.path.isfile('voice_users.csv'):
+            return None, "用户模型识别失败，请重新选择模型文件"
 
-    mel = mel.unsqueeze(0).to(device)
-    with torch.no_grad():
-        embedding = model(mel)
-    return embedding.cpu()
+        with open('voice_users.csv', mode='r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['username'] == username:
+                    stored_embedding = torch.tensor([float(x) for x in row['embedding'].split(',')])
+                    similarity = F.cosine_similarity(embedding, stored_embedding, dim=0).item()
+                    if similarity > 0.92:
+                        return similarity, True
+                    else:
+                        return similarity, False
 
-if __name__ == "__main__":
-    import json
+        return None, f"用户 {username} 未找到"
 
-    # 加载配置
-    with open("config_ecapa_cnceleb.py") as f:
-        config = eval(f.read())
+    def _load_config(self, config_path):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("config", config_path)
+        config_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(config_module)
+        config = {
+            "sample_rate": config_module.sample_rate,
+            "embedding_dim": config_module.embedding_dim,
+            "channels": config_module.channels
+        }
+        return config
 
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    model_path = "results/ecapa_cnceleb/final_model.ckpt"
-    audio1 = "audio/a_1.wav"
-    audio2 = "audio/a_2.wav"
+    def _load_model(self, model_path):
+        from speechbrain.lobes.models.ECAPA_TDNN import ECAPA_TDNN
+        model = ECAPA_TDNN(
+            input_size=80,
+            lin_neurons=self.config["embedding_dim"],
+            channels=self.config["channels"],
+            kernel_sizes=[5, 3, 3, 1],
+            dilations=[1, 2, 3, 1],
+        ).to(self.device)
+        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        model.eval()
+        return model
 
-    # 加载模型
-    model = load_model(model_path, config, device)
+    def _extract_embedding(self, audio_path, model):
+        waveform, sr = torchaudio.load(audio_path)
+        if sr != self.config["sample_rate"]:
+            waveform = torchaudio.functional.resample(waveform, sr, self.config["sample_rate"])
+        # If stereo, convert to mono by averaging channels
+        if waveform.dim() > 1 and waveform.size(0) > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+        waveform = waveform.squeeze(0)
 
-    # 提取两个音频的嵌入
-    emb1 = extract_embedding(audio1, model, config, device).squeeze(1)
-    emb2 = extract_embedding(audio2, model, config, device).squeeze(1)
+        max_len = self.config["sample_rate"] * 10
+        if waveform.size(0) > max_len:
+            waveform = waveform[:max_len]
+        else:
+            waveform = torch.nn.functional.pad(waveform, (0, max_len - waveform.size(0)))
 
-    # 计算余弦相似度
-    similarity = F.cosine_similarity(emb1, emb2).item()
-    print(f"Cosine Similarity between {audio1} and {audio2}: {similarity:.4f}")
+        mel = torchaudio.transforms.MelSpectrogram(
+            sample_rate=self.config["sample_rate"],
+            n_fft=400,
+            win_length=400,
+            hop_length=160,
+            n_mels=80
+        )(waveform).transpose(0, 1)
 
-    # 简单分类预测（如果模型是分类器）
-    with torch.no_grad():
-        logits = model(emb1.unsqueeze(0).to(device))
-        predicted_class = torch.argmax(logits, dim=-1).item()
-        print(f"Predicted class for {audio1}: {predicted_class}")
+        mel = mel.unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            embedding = model(mel)
+        return embedding.cpu()
+
+if __name__ == '__main__':
+    config_path = "config_ecapa_cnceleb.py"
+    v = VoiceRecognizer(config_path)
+    v.enroll_user("3号玩家", "audio/b_1.wav", "results/ecapa_cnceleb/final_model.ckpt")
+    # v.verify_user("2号玩家", "audio/b_2.wav", "results/ecapa_cnceleb/final_model.ckpt")

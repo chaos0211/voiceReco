@@ -4,6 +4,8 @@ from PyQt5.QtWidgets import (
     QPushButton, QFileDialog, QLineEdit, QMessageBox, QTabWidget, QSpinBox
 )
 from inference.user_db import UserDatabase
+from inference.inference import VoiceRecognizer
+import os
 
 class VoiceRecoApp(QMainWindow):
     def __init__(self):
@@ -12,6 +14,7 @@ class VoiceRecoApp(QMainWindow):
         self.resize(600, 400)
 
         self.db = UserDatabase()
+        self.recognizer = VoiceRecognizer(config_path="config_ecapa_cnceleb.py")
 
         tabs = QTabWidget()
         tabs.addTab(self.create_voice_entry_tab(), "声音录入")
@@ -95,9 +98,9 @@ class VoiceRecoApp(QMainWindow):
         self.batch_size_spin.setRange(1, 256)
         self.batch_size_spin.setValue(16)
 
-        self.steps_spin = QSpinBox()
-        self.steps_spin.setRange(100, 10000)
-        self.steps_spin.setValue(300)
+        self.max_steps_spin = QSpinBox()
+        self.max_steps_spin.setRange(100, 10000)
+        self.max_steps_spin.setValue(300)
 
         model_btn = QPushButton("评估模型（选择 .ckpt）")
         model_btn.clicked.connect(self.select_model_for_evaluation)
@@ -110,7 +113,7 @@ class VoiceRecoApp(QMainWindow):
         layout.addWidget(QLabel("Batch Size"))
         layout.addWidget(self.batch_size_spin)
         layout.addWidget(QLabel("Max Steps Per Epoch"))
-        layout.addWidget(self.steps_spin)
+        layout.addWidget(self.max_steps_spin)
         layout.addWidget(model_btn)
 
         widget.setLayout(layout)
@@ -146,13 +149,12 @@ class VoiceRecoApp(QMainWindow):
             QMessageBox.warning(self, "警告", "请选择用于提取特征的模型文件")
             return
 
-        if self.db.user_exists(username):
-            reply = QMessageBox.question(self, "用户已存在", "是否替换已有音频？", QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.No:
-                return
-
-        self.db.add_or_replace_user(username, self.audio_path)
-        QMessageBox.information(self, "成功", "音频已保存")
+        # recognizer = self.recognizer
+        try:
+            self.recognizer.enroll_user(username, self.audio_path, self.entry_model_path)
+            QMessageBox.information(self, "成功", f"用户 [{username}] 已成功录制声纹")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"录音失败: {str(e)}")
 
     def select_dataset(self):
         path = QFileDialog.getExistingDirectory(self, "选择数据集文件夹")
@@ -181,12 +183,17 @@ class VoiceRecoApp(QMainWindow):
             QMessageBox.warning(self, "警告", "请选择用于识别的模型文件")
             return
 
-        if not self.db.user_exists(username):
+        # recognizer = self.recognizer
+        try:
+            similarity, passed = self.recognizer.verify_user(username, self.verify_audio_path, self.verify_model_path)
+            if passed:
+                QMessageBox.information(self, "识别结果", f"用户 [{username}] 模型识别计算结果为 : {similarity:.4f}，用户识别成功")
+            else:
+                QMessageBox.warning(self, "识别结果", f"用户 [{username}] 模型识别计算结果为 : {similarity:.4f}，用户识别失败")
+        except FileNotFoundError:
             QMessageBox.information(self, "结果", f"该用户 [{username}] 未录入声音")
-            return
-
-        # TODO: 调用模型获取嵌入并比较
-        QMessageBox.information(self, "结果", f"声音识别通过，是用户 [{username}]")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"识别失败: {str(e)}")
 
     def select_entry_model_file(self):
         model_path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", "", "Checkpoint Files (*.ckpt)")

@@ -13,7 +13,7 @@ class UserDatabase:
         if not os.path.exists(self.db_file):
             with open(self.db_file, mode='w', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow(['username', 'embedding_path'])
+                writer.writerow(['username', 'embedding'])
 
     def user_exists(self, username):
         if not os.path.exists(self.db_file):
@@ -35,7 +35,7 @@ class UserDatabase:
                 entries = list(reader)
 
         with open(self.db_file, mode='w', newline='') as file:
-            fieldnames = ['username', 'embedding_path']
+            fieldnames = ['username', 'embedding']
             writer = csv.DictWriter(file, fieldnames=fieldnames)
             writer.writeheader()
 
