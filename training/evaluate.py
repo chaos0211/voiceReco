@@ -73,29 +73,44 @@ class ModelEvaluator:
 
     def evaluate(self):
         self.model.eval()
-        correct = 0
-        total = 0
-
-        classifier = nn.Linear(192, len(set(label.item() for _, label in self.val_loader.dataset)))
-        classifier.to(self.device)
-        classifier.eval()
+        print("✅ 模型前向传播中，请稍候...")
+        embeddings = []
+        label_list = []
 
         with torch.no_grad():
             for feats, labels in self.val_loader:
                 feats = feats.to(self.device)
-                labels = labels.to(self.device)
+                embeds = self.model(feats).squeeze(1).cpu()
+                embeddings.append(embeds)
+                label_list.append(labels)
+        print("✅ 前向传播完成，正在进行相似度评估...")
 
-                embeddings = self.model(feats).squeeze(1)
-                logits = classifier(embeddings)
-                preds = torch.argmax(logits, dim=1)
-                correct += (preds == labels).sum().item()
-                total += labels.size(0)
+        embeddings = torch.cat(embeddings, dim=0)
+        label_list = torch.cat(label_list, dim=0)
+
+        correct = 0
+        total = 0
+        threshold = 0.92
+
+        for i in range(len(embeddings)):
+            for j in range(i + 1, len(embeddings)):
+                sim = cosine_similarity(embeddings[i], embeddings[j], dim=0).item()
+                same = label_list[i] == label_list[j]
+                pred_same = sim > threshold
+                print(f"Sample {i} vs {j} | Similarity: {sim:.4f} | "
+                      f"Label A: {label_list[i].item()} | Label B: {label_list[j].item()} | "
+                      f"Predicted Same: {pred_same} | Actual Same: {same}")
+                if same == pred_same:
+                    correct += 1
+                total += 1
 
         acc = correct / total if total > 0 else 0
-        print(f"✅ 模型评估完成，分类准确率: {acc:.4f}")
+        print(f"✅ 模型评估完成，相似度判定准确率: {acc:.4f}")
 
 if __name__ == '__main__':
     evaluator = ModelEvaluator(model_path="results/ecapa_cnceleb/final_model.ckpt")
     evaluator.load_model()
+    print("✅ 加载模型完成，开始加载验证集...")
     evaluator.load_data()
+    print("✅ 验证数据加载完成，样本总数:", len(evaluator.val_loader.dataset))
     evaluator.evaluate()
