@@ -36,6 +36,7 @@ class VoiceprintTrainerGUI:
             "cosine_threshold": cosine_threshold,
             "use_wandb": use_wandb,
             "device": self.device,
+            "max_steps_per_epoch": max_steps_per_epoch,
         }
 
     def _select_device(self):

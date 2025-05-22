@@ -17,13 +17,14 @@ channels = [1024, 1024, 1024, 1024]  # 每层卷积通道数
 # -----------------------
 # 训练参数
 # -----------------------
-epochs = 60
-batch_size = 8
+epochs = 10
+batch_size = 16
 lr = 0.001
 momentum = 0.9
 weight_decay = 1e-5
 lr_annealing = True
 max_grad_norm = 5.0
+max_steps_per_epoch= 500
 
 # -----------------------
 # 数据增强（可选）
