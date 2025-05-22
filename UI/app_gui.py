@@ -137,6 +137,13 @@ class VoiceRecoApp(QMainWindow):
         layout.addWidget(self.eval_model_label)
         layout.addWidget(eval_model_btn)
 
+        eval_btn = QPushButton("开始模型评估")
+        eval_btn.clicked.connect(self.run_model_evaluation)
+        layout.addWidget(eval_btn)
+
+        self.eval_result_label = QLabel("")
+        layout.addWidget(self.eval_result_label)
+
         widget.setLayout(layout)
         return widget
 
@@ -172,6 +179,7 @@ class VoiceRecoApp(QMainWindow):
         model_path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", "", "Checkpoint Files (*.ckpt)")
         if model_path:
             self.eval_model_label.setText(f"模型路径: {model_path}")
+            self.eval_model_path = model_path
             # 可调用评估逻辑
 
     def select_verify_audio(self):
@@ -212,6 +220,24 @@ class VoiceRecoApp(QMainWindow):
         if model_path:
             self.verify_model_path = model_path
             self.verify_model_label.setText(f"模型路径: {model_path}")
+
+    def run_model_evaluation(self):
+        if not hasattr(self, 'eval_model_path'):
+            QMessageBox.warning(self, "警告", "请选择模型文件")
+            return
+        try:
+            from training.evaluate import ModelEvaluator
+
+            evaluator = ModelEvaluator(model_path=self.eval_model_path)
+            evaluator.load_model()
+            evaluator.load_data()
+            acc, msg = evaluator.evaluate()
+            if acc is None:
+                self.eval_result_label.setText("模型评估失败，未返回结果")
+                return
+            self.eval_result_label.setText(msg)
+        except Exception as e:
+            self.eval_result_label.setText(f"模型评估错误: {str(e)}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

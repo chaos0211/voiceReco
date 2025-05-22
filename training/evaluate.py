@@ -46,7 +46,7 @@ class ModelEvaluator:
         labels = []
 
         max_audio_len = 16000 * 7
-        for _, row in df.head(300).iterrows():
+        for _, row in df.head(1000).iterrows():
             audio_path = row['wav'] if row['wav'].startswith(self.wav_dir) else f"{self.wav_dir}/{row['wav']}"
             signal, sr = torchaudio.load(audio_path)
             # Truncate audio to max 7 seconds (112000 frames at 16kHz)
@@ -72,6 +72,11 @@ class ModelEvaluator:
         self.val_loader = DataLoader(dataset, batch_size=self.batch_size)
 
     def evaluate(self):
+        print(f"模型状态: {'已加载' if self.model is not None else '未加载'}")
+        print(f"验证集状态: {'已加载' if self.val_loader is not None else '未加载'}")
+
+        if self.model is None or self.val_loader is None:
+            return 0.0, "模型未正确加载或验证集为空，无法评估。"
         self.model.eval()
         print("✅ 模型前向传播中，请稍候...")
         embeddings = []
@@ -105,7 +110,7 @@ class ModelEvaluator:
                 total += 1
 
         acc = correct / total if total > 0 else 0
-        print(f"✅ 模型评估完成，相似度判定准确率: {acc:.4f}")
+        return acc, f"✅ 模型评估完成，相似度判定准确率: {acc:.4f}"
 
 if __name__ == '__main__':
     evaluator = ModelEvaluator(model_path="results/ecapa_cnceleb/final_model.ckpt")
@@ -113,4 +118,5 @@ if __name__ == '__main__':
     print("✅ 加载模型完成，开始加载验证集...")
     evaluator.load_data()
     print("✅ 验证数据加载完成，样本总数:", len(evaluator.val_loader.dataset))
-    evaluator.evaluate()
+    acc, msg = evaluator.evaluate()
+    print(msg)

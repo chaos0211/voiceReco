@@ -45,7 +45,7 @@ class VoiceRecognizer:
                 if row['username'] == username:
                     stored_embedding = torch.tensor([float(x) for x in row['embedding'].split(',')])
                     similarity = F.cosine_similarity(embedding, stored_embedding, dim=0).item()
-                    if similarity > 0.92:
+                    if similarity > 0.90:
                         return similarity, True
                     else:
                         return similarity, False
