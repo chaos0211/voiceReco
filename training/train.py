@@ -41,57 +41,61 @@ cosine_threshold = 0.65
 # Logging
 use_wandb = False  # set to True if you want to use Weights & Biases
 
+import pandas as pd
+import torchaudio
+from torch.utils.data import Dataset
+
+
+mel_transform = torchaudio.transforms.MelSpectrogram(
+    sample_rate=16000,
+    n_fft=400,
+    win_length=400,
+    hop_length=160,
+    n_mels=80
+)
+
+
+class CNCELEBDataset(Dataset):
+    def __init__(self, csv_file, label_encoder, config):
+        self.data = pd.read_csv(csv_file)
+        self.label_encoder = label_encoder
+        self.config = config
+        self.max_audio_length = self.config["sample_rate"] * 10  # 裁剪到10秒
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        path = self.data.iloc[idx]['wav']
+        label = self.data.iloc[idx]['spk_id']
+        waveform, sr = torchaudio.load(path)
+
+        if sr != self.config["sample_rate"]:
+            waveform = torchaudio.functional.resample(waveform, sr, self.config["sample_rate"])
+
+        waveform = waveform.squeeze(0)
+
+        # 统一裁剪到10秒
+        if waveform.size(0) > self.max_audio_length:
+            waveform = waveform[:self.max_audio_length]
+        else:
+            padding = self.max_audio_length - waveform.size(0)
+            waveform = torch.nn.functional.pad(waveform, (0, padding))
+
+        waveform = mel_transform(waveform)  # [F, T]
+        waveform = waveform.transpose(0, 1)  # [T, F]
+
+        label_idx = self.label_encoder.encode_label(label)
+        return waveform, label_idx
+
 
 # === Train function for external import ===
 def train_model(config):
     import os
-    import pandas as pd
     import torch
-    import torchaudio
-    from torch.utils.data import DataLoader, Dataset
+    from torch.utils.data import DataLoader
     from speechbrain.lobes.models.ECAPA_TDNN import ECAPA_TDNN
     from speechbrain.dataio.encoder import CategoricalEncoder
-
-    mel_transform = torchaudio.transforms.MelSpectrogram(
-        sample_rate=config["sample_rate"],
-        n_fft=400,
-        win_length=400,
-        hop_length=160,
-        n_mels=80
-    )
-
-    class CNCELEBDataset(Dataset):
-        def __init__(self, csv_file, label_encoder, config):
-            self.data = pd.read_csv(csv_file)
-            self.label_encoder = label_encoder
-            self.config = config
-            self.max_audio_length = self.config["sample_rate"] * 10  # 裁剪到10秒
-
-        def __len__(self):
-            return len(self.data)
-
-        def __getitem__(self, idx):
-            path = self.data.iloc[idx]['wav']
-            label = self.data.iloc[idx]['spk_id']
-            waveform, sr = torchaudio.load(path)
-
-            if sr != self.config["sample_rate"]:
-                waveform = torchaudio.functional.resample(waveform, sr, self.config["sample_rate"])
-
-            waveform = waveform.squeeze(0)
-
-            # 统一裁剪到10秒
-            if waveform.size(0) > self.max_audio_length:
-                waveform = waveform[:self.max_audio_length]
-            else:
-                padding = self.max_audio_length - waveform.size(0)
-                waveform = torch.nn.functional.pad(waveform, (0, padding))
-
-            waveform = mel_transform(waveform)  # [F, T]
-            waveform = waveform.transpose(0, 1)  # [T, F]
-
-            label_idx = self.label_encoder.encode_label(label)
-            return waveform, label_idx
 
     # 读取 CSV 和准备标签编码器
     df = pd.read_csv(config["train_annotation"])
@@ -106,7 +110,7 @@ def train_model(config):
         labels = torch.tensor(labels).long()
         return waveforms, labels
 
-    train_dataset = CNCELEBDataset(config["train_annotation"], label_encoder,config)
+    train_dataset = CNCELEBDataset(config["train_annotation"], label_encoder, config)
     train_loader = DataLoader(
         train_dataset,
         batch_size=config["batch_size"],

@@ -1,7 +1,8 @@
-import os
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel
+import sys
 import torch
 from config_ecapa_cnceleb import *
-from speechbrain.utils.parameter_transfer import Pretrainer
+
 
 class VoiceprintTrainerGUI:
     def __init__(self):
@@ -51,10 +52,43 @@ class VoiceprintTrainerGUI:
         return pretrainer
 
     def run_training(self):
-        from train import train_model
+        from training.train import train_model
         print(">>> 启动训练流程")
         train_model(self.config)
 
+
+# 新增 PyQt5 GUI 类
+class VoiceRecoApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+        self.trainer = VoiceprintTrainerGUI()
+
+    def initUI(self):
+        self.setWindowTitle("Voice Recognition Trainer")
+        self.setGeometry(100, 100, 300, 150)
+
+        self.label = QLabel("Voice Recognition System", self)
+
+        self.train_button = QPushButton("Start Training", self)
+        self.train_button.clicked.connect(self.start_training)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.label)
+        layout.addWidget(self.train_button)
+        self.setLayout(layout)
+
+    def start_training(self):
+        self.label.setText("Training started...")
+        self.trainer.run_training()
+        self.label.setText("Training completed.")
+
+
 if __name__ == "__main__":
-    app = VoiceprintTrainerGUI()
-    app.run_training()
+    # app = VoiceprintTrainerGUI()
+    # app.run_training()
+
+    app = QApplication(sys.argv)
+    mainWin = VoiceRecoApp()
+    mainWin.show()
+    sys.exit(app.exec_())
