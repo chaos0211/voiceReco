@@ -17,8 +17,8 @@ class VoiceRecoApp(QMainWindow):
         self.recognizer = VoiceRecognizer(config_path="config_ecapa_cnceleb.py")
 
         tabs = QTabWidget()
-        tabs.addTab(self.create_voice_entry_tab(), "声音录入")
-        tabs.addTab(self.create_voice_verify_tab(), "声音识别")
+        tabs.addTab(self.create_voice_entry_tab(), "声纹录入")
+        tabs.addTab(self.create_voice_verify_tab(), "声纹识别")
         tabs.addTab(self.create_train_tab(), "模型训练")
         tabs.addTab(self.create_eval_tab(), "模型评估")
 
