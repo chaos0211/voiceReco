@@ -50,7 +50,7 @@ class VoiceRecognizer:
                     else:
                         return similarity, False
 
-        return None, f"用户 {username} 未找到"
+        raise FileNotFoundError(f"用户 {username} 未找到")
 
     def _load_config(self, config_path):
         import importlib.util

@@ -50,6 +50,9 @@ class VoiceRecoApp(QMainWindow):
         layout.addWidget(entry_model_btn)
         layout.addWidget(submit_btn)
 
+        self.entry_result_label = QLabel("")
+        layout.addWidget(self.entry_result_label)
+
         widget.setLayout(layout)
         return widget
 
@@ -78,6 +81,9 @@ class VoiceRecoApp(QMainWindow):
         layout.addWidget(self.verify_model_label)
         layout.addWidget(verify_model_btn)
         layout.addWidget(verify_btn)
+
+        self.verify_result_label = QLabel("")
+        layout.addWidget(self.verify_result_label)
 
         widget.setLayout(layout)
         return widget
@@ -152,9 +158,9 @@ class VoiceRecoApp(QMainWindow):
         # recognizer = self.recognizer
         try:
             self.recognizer.enroll_user(username, self.audio_path, self.entry_model_path)
-            QMessageBox.information(self, "成功", f"用户 [{username}] 已成功录制声纹")
+            self.entry_result_label.setText(f"用户 [{username}] 已成功录制声纹")
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"录音失败: {str(e)}")
+            self.entry_result_label.setText(f"录音失败: {str(e)}")
 
     def select_dataset(self):
         path = QFileDialog.getExistingDirectory(self, "选择数据集文件夹")
@@ -187,13 +193,13 @@ class VoiceRecoApp(QMainWindow):
         try:
             similarity, passed = self.recognizer.verify_user(username, self.verify_audio_path, self.verify_model_path)
             if passed:
-                QMessageBox.information(self, "识别结果", f"用户 [{username}] 模型识别计算结果为 : {similarity:.4f}，用户识别成功")
+                self.verify_result_label.setText(f"用户 [{username}] 模型识别计算结果为 : {similarity:.4f}，用户识别成功")
             else:
-                QMessageBox.warning(self, "识别结果", f"用户 [{username}] 模型识别计算结果为 : {similarity:.4f}，用户识别失败")
+                self.verify_result_label.setText(f"用户 [{username}] 模型识别计算结果为 : {similarity:.4f}，用户识别失败")
         except FileNotFoundError:
-            QMessageBox.information(self, "结果", f"该用户 [{username}] 未录入声音")
+            self.verify_result_label.setText(f"该用户 [{username}] 未录入声音")
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"识别失败: {str(e)}")
+            self.verify_result_label.setText(f"识别失败: {str(e)}")
 
     def select_entry_model_file(self):
         model_path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", "", "Checkpoint Files (*.ckpt)")
