@@ -1,11 +1,9 @@
-
-
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFileDialog, QLineEdit, QMessageBox, QTabWidget, QSpinBox
 )
-from ../inference.user_db import UserDatabase
+from inference.user_db import UserDatabase
 
 class VoiceRecoApp(QMainWindow):
     def __init__(self):
@@ -16,12 +14,14 @@ class VoiceRecoApp(QMainWindow):
         self.db = UserDatabase()
 
         tabs = QTabWidget()
-        tabs.addTab(self.create_record_tab(), "声音识别")
+        tabs.addTab(self.create_voice_entry_tab(), "声音录入")
+        tabs.addTab(self.create_voice_verify_tab(), "声音识别")
         tabs.addTab(self.create_train_tab(), "模型训练")
+        tabs.addTab(self.create_eval_tab(), "模型评估")
 
         self.setCentralWidget(tabs)
 
-    def create_record_tab(self):
+    def create_voice_entry_tab(self):
         widget = QWidget()
         layout = QVBoxLayout()
 
@@ -32,6 +32,10 @@ class VoiceRecoApp(QMainWindow):
         audio_btn = QPushButton("选择音频文件")
         audio_btn.clicked.connect(self.select_audio_file)
 
+        self.entry_model_label = QLabel("未选择模型文件")
+        entry_model_btn = QPushButton("选择模型文件")
+        entry_model_btn.clicked.connect(self.select_entry_model_file)
+
         submit_btn = QPushButton("提交音频")
         submit_btn.clicked.connect(self.submit_audio)
 
@@ -39,7 +43,38 @@ class VoiceRecoApp(QMainWindow):
         layout.addWidget(self.username_input)
         layout.addWidget(self.audio_path_label)
         layout.addWidget(audio_btn)
+        layout.addWidget(self.entry_model_label)
+        layout.addWidget(entry_model_btn)
         layout.addWidget(submit_btn)
+
+        widget.setLayout(layout)
+        return widget
+
+    def create_voice_verify_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        self.verify_username_input = QLineEdit()
+        self.verify_username_input.setPlaceholderText("请输入用户名以验证")
+
+        self.verify_audio_label = QLabel("未选择验证音频")
+        verify_audio_btn = QPushButton("选择音频文件")
+        verify_audio_btn.clicked.connect(self.select_verify_audio)
+
+        self.verify_model_label = QLabel("未选择模型文件")
+        verify_model_btn = QPushButton("选择模型文件")
+        verify_model_btn.clicked.connect(self.select_verify_model_file)
+
+        verify_btn = QPushButton("开始识别")
+        verify_btn.clicked.connect(self.verify_audio_identity)
+
+        layout.addWidget(QLabel("声音识别"))
+        layout.addWidget(self.verify_username_input)
+        layout.addWidget(self.verify_audio_label)
+        layout.addWidget(verify_audio_btn)
+        layout.addWidget(self.verify_model_label)
+        layout.addWidget(verify_model_btn)
+        layout.addWidget(verify_btn)
 
         widget.setLayout(layout)
         return widget
@@ -81,6 +116,21 @@ class VoiceRecoApp(QMainWindow):
         widget.setLayout(layout)
         return widget
 
+    def create_eval_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        self.eval_model_label = QLabel("未选择模型文件")
+        eval_model_btn = QPushButton("选择模型（.ckpt）")
+        eval_model_btn.clicked.connect(self.select_model_for_evaluation)
+
+        layout.addWidget(QLabel("模型评估"))
+        layout.addWidget(self.eval_model_label)
+        layout.addWidget(eval_model_btn)
+
+        widget.setLayout(layout)
+        return widget
+
     def select_audio_file(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择音频文件", "", "Audio Files (*.wav *.mp3)")
         if path:
@@ -91,6 +141,9 @@ class VoiceRecoApp(QMainWindow):
         username = self.username_input.text().strip()
         if not username or not hasattr(self, 'audio_path'):
             QMessageBox.warning(self, "警告", "请填写用户名并选择音频文件")
+            return
+        if not hasattr(self, 'entry_model_path'):
+            QMessageBox.warning(self, "警告", "请选择用于提取特征的模型文件")
             return
 
         if self.db.user_exists(username):
@@ -110,8 +163,42 @@ class VoiceRecoApp(QMainWindow):
     def select_model_for_evaluation(self):
         model_path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", "", "Checkpoint Files (*.ckpt)")
         if model_path:
-            QMessageBox.information(self, "模型选择", f"已选择模型文件: {model_path}")
-            # 这里你可以调用模型评估函数并传入model_path和self.dataset_path等参数
+            self.eval_model_label.setText(f"模型路径: {model_path}")
+            # 可调用评估逻辑
+
+    def select_verify_audio(self):
+        path, _ = QFileDialog.getOpenFileName(self, "选择音频文件", "", "Audio Files (*.wav *.mp3)")
+        if path:
+            self.verify_audio_path = path
+            self.verify_audio_label.setText(f"已选择: {path}")
+
+    def verify_audio_identity(self):
+        username = self.verify_username_input.text().strip()
+        if not username or not hasattr(self, 'verify_audio_path'):
+            QMessageBox.warning(self, "警告", "请填写用户名并选择音频文件")
+            return
+        if not hasattr(self, 'verify_model_path'):
+            QMessageBox.warning(self, "警告", "请选择用于识别的模型文件")
+            return
+
+        if not self.db.user_exists(username):
+            QMessageBox.information(self, "结果", f"该用户 [{username}] 未录入声音")
+            return
+
+        # TODO: 调用模型获取嵌入并比较
+        QMessageBox.information(self, "结果", f"声音识别通过，是用户 [{username}]")
+
+    def select_entry_model_file(self):
+        model_path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", "", "Checkpoint Files (*.ckpt)")
+        if model_path:
+            self.entry_model_path = model_path
+            self.entry_model_label.setText(f"模型路径: {model_path}")
+
+    def select_verify_model_file(self):
+        model_path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", "", "Checkpoint Files (*.ckpt)")
+        if model_path:
+            self.verify_model_path = model_path
+            self.verify_model_label.setText(f"模型路径: {model_path}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
