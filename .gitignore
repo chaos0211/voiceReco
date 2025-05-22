@@ -1,0 +1,12 @@
+wav/cnceleb/
+data/
+*.flac
+*.mp3
+*.wav
+
+# IDE config
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
