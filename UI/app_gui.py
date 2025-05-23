@@ -23,6 +23,15 @@ class VoiceRecoApp(QMainWindow):
         tabs.addTab(self.create_eval_tab(), "模型评估")
 
         self.setCentralWidget(tabs)
+        self.installEventFilter(self)
+
+    def closeEvent(self, event):
+        reply = QMessageBox.question(self, "退出确认", "确定要退出程序吗？",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            event.accept()
+        else:
+            event.ignore()
 
     def create_voice_entry_tab(self):
         widget = QWidget()
@@ -95,7 +104,7 @@ class VoiceRecoApp(QMainWindow):
         left_layout = QVBoxLayout()
         right_layout = QVBoxLayout()
 
-        self.dataset_path_label = QLabel("未选择数据集文件夹")
+        # self.dataset_path_label = QLabel("未选择数据集文件夹")
         dataset_btn = QPushButton("选择数据集")
         dataset_btn.clicked.connect(self.select_dataset)
 
@@ -113,7 +122,7 @@ class VoiceRecoApp(QMainWindow):
 
         layout_label = QLabel("模型训练参数")
         left_layout.addWidget(layout_label)
-        left_layout.addWidget(self.dataset_path_label)
+        # left_layout.addWidget(self.dataset_path_label)
         left_layout.addWidget(dataset_btn)
         left_layout.addWidget(QLabel("Epochs"))
         left_layout.addWidget(self.epoch_spin)
@@ -123,9 +132,9 @@ class VoiceRecoApp(QMainWindow):
         left_layout.addWidget(self.max_steps_spin)
 
         # 新增：开始训练按钮
-        train_btn = QPushButton("开始训练")
-        train_btn.clicked.connect(self.train_model_from_gui)
-        left_layout.addWidget(train_btn)
+        self.train_btn = QPushButton("开始训练")
+        self.train_btn.clicked.connect(self.train_model_from_gui)
+        left_layout.addWidget(self.train_btn)
 
         # 新增：另存为模型按钮
         self.save_model_btn = QPushButton("另存为模型")
@@ -146,6 +155,7 @@ class VoiceRecoApp(QMainWindow):
         try:
             from training.train import train_model
             import config_ecapa_cnceleb as config
+            from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
 
             config_dict = config.__dict__
             config_dict["epochs"] = self.epoch_spin.value()
@@ -166,13 +176,38 @@ class VoiceRecoApp(QMainWindow):
             self.train_log.append(f"Batch Size: {config_dict['batch_size']}")
             self.train_log.append(f"Max Steps Per Epoch: {config_dict['max_steps_per_epoch']}")
 
-            import io, contextlib
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                train_model(config_dict)
-            self.train_log.append(buffer.getvalue())
+            import threading
+            import sys
 
-            QMessageBox.information(self, "训练完成", "✅ 模型训练已完成")
+            class QTextEditStream:
+                def __init__(self, text_edit_widget):
+                    self.text_edit_widget = text_edit_widget
+                    self.terminal = sys.__stdout__
+
+                def write(self, text):
+                    if text.strip():
+                        self.text_edit_widget.append(text)
+                        self.terminal.write(text)
+                        self.terminal.flush()
+
+                def flush(self):
+                    self.terminal.flush()
+
+            def run_training():
+                text_stream = QTextEditStream(self.train_log)
+                sys.stdout = text_stream
+                try:
+                    train_model(config_dict)
+                    QMetaObject.invokeMethod(self.train_log, "append", Qt.QueuedConnection, Q_ARG(str, "✅ 模型训练已完成"))
+                    QMetaObject.invokeMethod(self.train_btn, "setEnabled", Qt.QueuedConnection, Q_ARG(bool, True))
+                except Exception as e:
+                    QMetaObject.invokeMethod(self.train_btn, "setEnabled", Qt.QueuedConnection, Q_ARG(bool, True))
+                    QMetaObject.invokeMethod(self.train_log, "append", Qt.QueuedConnection, Q_ARG(str, f"❌ 模型训练失败: {str(e)}"))
+                finally:
+                    sys.stdout = sys.__stdout__
+
+            self.train_btn.setEnabled(False)
+            threading.Thread(target=run_training).start()
         except Exception as e:
             QMessageBox.critical(self, "训练错误", f"❌ 模型训练失败: {str(e)}")
 
@@ -238,7 +273,7 @@ class VoiceRecoApp(QMainWindow):
     def select_dataset(self):
         path = QFileDialog.getExistingDirectory(self, "选择数据集文件夹")
         if path:
-            self.dataset_path_label.setText(f"数据集路径: {path}")
+            # self.dataset_path_label.setText(f"数据集路径: {path}")
             self.dataset_path = path
             self.train_log.append(f"已选择数据集路径: {path}")
 
