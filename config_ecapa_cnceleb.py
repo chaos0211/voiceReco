@@ -24,7 +24,7 @@ momentum = 0.9
 weight_decay = 1e-5
 lr_annealing = True
 max_grad_norm = 5.0
-max_steps_per_epoch= 500
+max_steps_per_epoch= 100
 
 # -----------------------
 # 数据增强（可选）

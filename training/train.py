@@ -97,6 +97,15 @@ def train_model(config):
     from speechbrain.lobes.models.ECAPA_TDNN import ECAPA_TDNN
     from speechbrain.dataio.encoder import CategoricalEncoder
 
+    # Ensure device is set in config
+    if "device" not in config:
+        if torch.backends.mps.is_available():
+            config["device"] = "mps"
+        elif torch.cuda.is_available():
+            config["device"] = "cuda"
+        else:
+            config["device"] = "cpu"
+
     # 读取 CSV 和准备标签编码器
     df = pd.read_csv(config["train_annotation"])
     label_encoder = CategoricalEncoder()
@@ -172,3 +181,12 @@ def train_model(config):
     os.makedirs(os.path.dirname(config["save_model_path"]), exist_ok=True)
     torch.save(model.state_dict(), config["save_model_path"])
     print(f"✅ 模型已保存至: {config['save_model_path']}")
+
+
+# Add entry point for running as a script
+if __name__ == "__main__":
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+    import config_ecapa_cnceleb as config
+    train_model(config.__dict__)
