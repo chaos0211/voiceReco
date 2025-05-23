@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFileDialog, QLineEdit, QMessageBox, QTabWidget, QSpinBox
+    QPushButton, QFileDialog, QLineEdit, QMessageBox, QTabWidget, QSpinBox, QTextEdit
 )
 from inference.user_db import UserDatabase
 from inference.inference import VoiceRecognizer
@@ -90,7 +90,10 @@ class VoiceRecoApp(QMainWindow):
 
     def create_train_tab(self):
         widget = QWidget()
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()
+
+        left_layout = QVBoxLayout()
+        right_layout = QVBoxLayout()
 
         self.dataset_path_label = QLabel("未选择数据集文件夹")
         dataset_btn = QPushButton("选择数据集")
@@ -108,22 +111,85 @@ class VoiceRecoApp(QMainWindow):
         self.max_steps_spin.setRange(100, 10000)
         self.max_steps_spin.setValue(300)
 
-        model_btn = QPushButton("评估模型（选择 .ckpt）")
-        model_btn.clicked.connect(self.select_model_for_evaluation)
+        layout_label = QLabel("模型训练参数")
+        left_layout.addWidget(layout_label)
+        left_layout.addWidget(self.dataset_path_label)
+        left_layout.addWidget(dataset_btn)
+        left_layout.addWidget(QLabel("Epochs"))
+        left_layout.addWidget(self.epoch_spin)
+        left_layout.addWidget(QLabel("Batch Size"))
+        left_layout.addWidget(self.batch_size_spin)
+        left_layout.addWidget(QLabel("Max Steps Per Epoch"))
+        left_layout.addWidget(self.max_steps_spin)
 
-        layout.addWidget(QLabel("模型训练参数"))
-        layout.addWidget(self.dataset_path_label)
-        layout.addWidget(dataset_btn)
-        layout.addWidget(QLabel("Epochs"))
-        layout.addWidget(self.epoch_spin)
-        layout.addWidget(QLabel("Batch Size"))
-        layout.addWidget(self.batch_size_spin)
-        layout.addWidget(QLabel("Max Steps Per Epoch"))
-        layout.addWidget(self.max_steps_spin)
-        layout.addWidget(model_btn)
+        # 新增：开始训练按钮
+        train_btn = QPushButton("开始训练")
+        train_btn.clicked.connect(self.train_model_from_gui)
+        left_layout.addWidget(train_btn)
+
+        # 新增：另存为模型按钮
+        self.save_model_btn = QPushButton("另存为模型")
+        self.save_model_btn.clicked.connect(self.save_trained_model)
+        left_layout.addWidget(self.save_model_btn)
+
+        right_layout.addWidget(QLabel("训练日志"))
+        self.train_log = QTextEdit()
+        self.train_log.setReadOnly(True)
+        right_layout.addWidget(self.train_log)
+
+        layout.addLayout(left_layout)
+        layout.addLayout(right_layout)
 
         widget.setLayout(layout)
         return widget
+    def train_model_from_gui(self):
+        try:
+            from training.train import train_model
+            import config_ecapa_cnceleb as config
+
+            config_dict = config.__dict__
+            config_dict["epochs"] = self.epoch_spin.value()
+            config_dict["batch_size"] = self.batch_size_spin.value()
+            config_dict["max_steps_per_epoch"] = self.max_steps_spin.value()
+
+            import torch
+            if torch.backends.mps.is_available():
+                config_dict["device"] = "mps"
+            elif torch.cuda.is_available():
+                config_dict["device"] = "cuda"
+            else:
+                config_dict["device"] = "cpu"
+
+            self.train_log.clear()
+            self.train_log.append(f"开始训练模型...")
+            self.train_log.append(f"Epochs: {config_dict['epochs']}")
+            self.train_log.append(f"Batch Size: {config_dict['batch_size']}")
+            self.train_log.append(f"Max Steps Per Epoch: {config_dict['max_steps_per_epoch']}")
+
+            import io, contextlib
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                train_model(config_dict)
+            self.train_log.append(buffer.getvalue())
+
+            QMessageBox.information(self, "训练完成", "✅ 模型训练已完成")
+        except Exception as e:
+            QMessageBox.critical(self, "训练错误", f"❌ 模型训练失败: {str(e)}")
+
+    def save_trained_model(self):
+        try:
+            if not os.path.exists("results/ecapa_cnceleb/final_model.ckpt"):
+                QMessageBox.warning(self, "警告", "找不到训练好的模型文件")
+                return
+            save_path, _ = QFileDialog.getSaveFileName(self, "另存为模型", filter="Checkpoint Files (*.ckpt)")
+            if save_path and not save_path.endswith(".ckpt"):
+                save_path += ".ckpt"
+            if save_path:
+                import shutil
+                shutil.copy("results/ecapa_cnceleb/final_model.ckpt", save_path)
+                QMessageBox.information(self, "另存成功", f"模型已保存至: {save_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"模型另存失败: {str(e)}")
 
     def create_eval_tab(self):
         widget = QWidget()
@@ -174,6 +240,7 @@ class VoiceRecoApp(QMainWindow):
         if path:
             self.dataset_path_label.setText(f"数据集路径: {path}")
             self.dataset_path = path
+            self.train_log.append(f"已选择数据集路径: {path}")
 
     def select_model_for_evaluation(self):
         model_path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", "", "Checkpoint Files (*.ckpt)")
